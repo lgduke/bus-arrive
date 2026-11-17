@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>미아리고개 실시간 버스</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .bus-badge-blue {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .spin-anim {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center pb-12">
+
+  <div class="w-full max-w-md px-4 pt-5 flex flex-col gap-4">
+    
+    <!-- 상단 헤더 -->
+    <header class="flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" id="statusDot"></span>
+          <span class="text-xs font-medium text-slate-400" id="statusText">초기화 중...</span>
+        </div>
+        <h1 class="text-xl font-bold tracking-tight text-white mt-0.5">미아리고개 정류장</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refreshBtn" onclick="manualRefresh()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 transition border border-slate-700/70 text-slate-200" title="새로고침">
+          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+        <button onclick="openSettings()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 transition border border-slate-700/70 text-slate-200" title="API 설정">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 현재 시각 및 갱신 바 -->
+    <div class="glass-card rounded-2xl px-4 py-3 flex items-center justify-between text-xs">
+      <div class="flex items-center gap-2 text-slate-300">
+        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>현재 시각 <strong id="currentClock" class="text-white font-semibold ml-1">--:--:--</strong></span>
+      </div>
+      <div class="text-slate-400">
+        자동갱신 <span id="autoRefreshTimer" class="text-blue-400 font-semibold">30초</span>
+      </div>
+    </div>
+
+    <!-- 방향 선택 탭 (상행/하행 정류장 번호 구분) -->
+    <div class="grid grid-cols-2 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+      <button id="tab08005" onclick="selectDirection('08005')" class="py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 bg-blue-600 text-white shadow-md">
+        <span>도심 방면 (성신여대입구)</span>
+        <span class="text-[11px] opacity-80 font-normal">정류소번호 08005</span>
+      </button>
+      <button id="tab08006" onclick="selectDirection('08006')" class="py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 text-slate-400 hover:text-slate-200">
+        <span>미아사거리 방면 (길음뉴타운)</span>
+        <span class="text-[11px] opacity-75 font-normal">정류소번호 08006</span>
+      </button>
+    </div>
+
+    <!-- 에러 상세 진단 배너 -->
+    <div id="errorBanner" class="hidden rounded-2xl bg-rose-950/80 border border-rose-500/40 px-4 py-3 text-xs text-rose-200 leading-relaxed">
+      <div class="font-bold text-rose-300 mb-1 flex items-center gap-1.5">
+        <span>⚠️ 실시간 API 응답 오류</span>
+      </div>
+      <div id="errorDetail" class="text-rose-200/90 break-all"></div>
+    </div>
+
+    <!-- 버스 도착 정보 리스트 -->
+    <main id="busListContainer" class="flex flex-col gap-3">
+      <!-- 자바스크립트로 카드 렌더링 -->
+    </main>
+
+    <!-- 하단 안내 -->
+    <footer class="mt-2 text-center text-[11px] text-slate-500 leading-relaxed">
+      대상 노선: 100 · 151 · 152 · 172번 (간선버스)<br/>
+      서울특별시버스정보시스템(TOPIS) 기준
+    </footer>
+  </div>
+
+  <!-- API 인증키 설정 모달 -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold text-white">공공데이터 API 설정</h2>
+        <button onclick="closeSettings()" class="text-slate-400 hover:text-white p-1">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed mb-4">
+        공공데이터포털(data.go.kr)에서 발급받은 <strong>서울특별시_정류소정보조회 서비스</strong>의 일반 인증키를 입력하세요.
+      </p>
+      <label class="block text-xs font-semibold text-slate-300 mb-1.5">인증키 (ServiceKey)</label>
+      <input id="apiKeyInput" type="text" placeholder="인증키 붙여넣기" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 mb-4" />
+      
+      <div class="flex gap-2">
+        <button onclick="resetApiKey()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">
+          기본키 복원
+        </button>
+        <button onclick="saveApiKey()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition shadow-lg shadow-blue-600/30">
+          저장 및 조회
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 발급받으신 인증키 기본 내장
+    const DEFAULT_API_KEY = '5ea1a59b98e8844285891a9cf4e338fd413c39df8ad09e6d3670f7807c85824b';
+    const TARGET_ROUTES = ['100', '151', '152', '172'];
+    const ROUTE_META = {
+      '100': { desc: '하계동 ↔ 용산구청', type: '간선' },
+      '151': { desc: '우이동 ↔ 중앙대학교', type: '간선' },
+      '152': { desc: '수유동 ↔ 경인교대', type: '간선' },
+      '172': { desc: '하계동 ↔ 월드컵파크', type: '간선' }
+    };
+
+    let currentArsId = localStorage.getItem('miari_ars_id') || '08005';
+    let apiKey = localStorage.getItem('seoul_bus_api_key') || DEFAULT_API_KEY;
+    let busDataState = [];
+    let refreshCountdown = 30;
+    let isDemoMode = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateTabUI();
+      startClockAndCountdown();
+      fetchBusData();
+    });
+
+    function startClockAndCountdown() {
+      setInterval(() => {
+        const now = new Date();
+        document.getElementById('currentClock').textContent = now.toTimeString().split(' ')[0];
+
+        refreshCountdown--;
+        if (refreshCountdown <= 0) {
+          refreshCountdown = 30;
+          fetchBusData();
+        }
+        document.getElementById('autoRefreshTimer').textContent = `${refreshCountdown}초`;
+
+        busDataState.forEach(bus => {
+          if (bus.sec1 > 0) bus.sec1--;
+          if (bus.sec2 > 0) bus.sec2--;
+        });
+        renderBusCards();
+      }, 1000);
+    }
+
+    function selectDirection(arsId) {
+      currentArsId = arsId;
+      localStorage.setItem('miari_ars_id', arsId);
+      updateTabUI();
+      refreshCountdown = 30;
+      fetchBusData();
+    }
+
+    function updateTabUI() {
+      const tab5 = document.getElementById('tab08005');
+      const tab6 = document.getElementById('tab08006');
+      if (currentArsId === '08005') {
+        tab5.className = 'py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 bg-blue-600 text-white shadow-md';
+        tab6.className = 'py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 text-slate-400 hover:text-slate-200';
+      } else {
+        tab6.className = 'py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 bg-blue-600 text-white shadow-md';
+        tab5.className = 'py-2.5 px-3 rounded-xl text-xs font-semibold transition flex flex-col items-center gap-0.5 text-slate-400 hover:text-slate-200';
+      }
+    }
+
+    function manualRefresh() {
+      const icon = document.getElementById('refreshIcon');
+      icon.classList.add('spin-anim');
+      refreshCountdown = 30;
+      fetchBusData().finally(() => {
+        setTimeout(() => icon.classList.remove('spin-anim'), 500);
+      });
+    }
+
+    function hideErrorBanner() {
+      document.getElementById('errorBanner').classList.add('hidden');
+    }
+
+    function showErrorBanner(msg) {
+      const banner = document.getElementById('errorBanner');
+      const detail = document.getElementById('errorDetail');
+      detail.textContent = msg;
+      banner.classList.remove('hidden');
+    }
+
+    async function fetchBusData() {
+      const cleanKey = (apiKey || '').trim();
+      if (!cleanKey) {
+        enableDemoMode('인증키 미입력');
+        return;
+      }
+
+      // 인증키 인코딩 처리 (이미 %가 포함되어 있으면 그대로, 아니면 encodeURIComponent)
+      const encodedKey = cleanKey.includes('%') ? cleanKey : encodeURIComponent(cleanKey);
+      const targetUrl = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?serviceKey=${encodedKey}&arsId=${currentArsId}`;
+
+      // 브라우저 CORS 차단을 우회하기 위한 다중 프록시 목록
+      const proxyList = [
+        (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+      ];
+
+      let xmlText = null;
+      let lastFetchError = '';
+
+      for (const makeProxyUrl of proxyList) {
+        try {
+          const response = await fetch(makeProxyUrl(targetUrl), { cache: 'no-store' });
+          if (response.ok) {
+            const text = await response.text();
+            if (text && (text.includes('<ServiceResult>') || text.includes('<OpenAPI_ServiceResponse>'))) {
+              xmlText = text;
+              break;
+            }
+          } else {
+            lastFetchError = `프록시 응답 코드 ${response.status}`;
+          }
+        } catch (err) {
+          lastFetchError = err.message;
+        }
+      }
+
+      if (!xmlText) {
+        showErrorBanner(`서울시 버스 서버 연결 실패 (${lastFetchError || '네트워크 또는 프록시 지연'}). 잠시 후 새로고침을 눌러주세요.`);
+        enableDemoMode('연결 지연 (임시 데이터)');
+        return;
+      }
+
+      try {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+        // 공공데이터포털 에러 응답 확인
+        const errMsgNode = xmlDoc.querySelector('returnAuthMsg') || xmlDoc.querySelector('errMsg');
+        const headerCd = xmlDoc.querySelector('headerCd')?.textContent;
+        const headerMsg = xmlDoc.querySelector('headerMsg')?.textContent;
+
+        if (errMsgNode) {
+          const code = xmlDoc.querySelector('returnReasonCode')?.textContent || '';
+          showErrorBanner(`공공데이터포털 오류 [${code}]: ${errMsgNode.textContent} (신규 발급 키는 서버 반영까지 최대 1시간 소요될 수 있습니다)`);
+          enableDemoMode('인증키 반영 대기중');
+          return;
+        }
+
+        if (headerCd && headerCd !== '0') {
+          showErrorBanner(`서울시 API 오류 [${headerCd}]: ${headerMsg}`);
+          enableDemoMode('API 응답 오류');
+          return;
+        }
+
+        const items = Array.from(xmlDoc.querySelectorAll('itemList'));
+        if (items.length === 0) {
+          showErrorBanner(`정류소(${currentArsId})에서 조회된 노선 데이터가 없습니다.`);
+          enableDemoMode('데이터 없음');
+          return;
+        }
+
+        const parsedList = TARGET_ROUTES.map(routeNo => {
+          const found = items.find(item => {
+            const rtNm = item.querySelector('rtNm')?.textContent?.trim();
+            return rtNm === routeNo;
+          });
+
+          if (!found) {
+            return {
+              routeNo,
+              arrmsg1: '운행정보 없음',
+              arrmsg2: '-',
+              sec1: 0,
+              sec2: 0,
+              stationNm1: '',
+              congestion1: '0'
+            };
+          }
+
+          return {
+            routeNo,
+            arrmsg1: found.querySelector('arrmsg1')?.textContent || '정보없음',
+            arrmsg2: found.querySelector('arrmsg2')?.textContent || '정보없음',
+            sec1: parseInt(found.querySelector('traTime1')?.textContent || '0', 10),
+            sec2: parseInt(found.querySelector('traTime2')?.textContent || '0', 10),
+            stationNm1: found.querySelector('stationNm1')?.textContent || '',
+            congestion1: found.querySelector('reride_Num1')?.textContent || '0'
+          };
+        });
+
+        hideErrorBanner();
+        isDemoMode = false;
+        busDataState = parsedList;
+        document.getElementById('statusDot').className = 'inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        document.getElementById('statusText').textContent = '실시간 서울시 TOPIS 연동중';
+        renderBusCards();
+
+      } catch (parseErr) {
+        showErrorBanner(`데이터 해석 오류: ${parseErr.message}`);
+        enableDemoMode('데이터 파싱 오류');
+      }
+    }
+
+    function enableDemoMode(reasonText) {
+      isDemoMode = true;
+      document.getElementById('statusDot').className = 'inline-block w-2 h-2 rounded-full bg-amber-400';
+      document.getElementById('statusText').textContent = reasonText || '데모 모드';
+
+      const base = currentArsId === '08005' ? [145, 380, 75, 560] : [220, 95, 490, 310];
+      busDataState = TARGET_ROUTES.map((routeNo, idx) => ({
+        routeNo,
+        arrmsg1: '',
+        arrmsg2: '',
+        sec1: base[idx],
+        sec2: base[idx] + 480 + (idx * 60),
+        stationNm1: idx === 2 ? '미아사거리역' : '길음뉴타운',
+        congestion1: idx === 0 ? '4' : '3'
+      }));
+      renderBusCards();
+    }
+
+    function formatSeconds(sec) {
+      if (sec <= 0) return '운행종료 / 대기';
+      if (sec < 60) return '곧 도착';
+      const min = Math.floor(sec / 60);
+      const remSec = sec % 60;
+      return `${min}분 ${remSec < 10 ? '0' + remSec : remSec}초`;
+    }
+
+    function getCongestionBadge(code) {
+      switch (String(code)) {
+        case '3': return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">여유</span>';
+        case '4': return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">보통</span>';
+        case '5': return '<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30">혼잡</span>';
+        default: return '';
+      }
+    }
+
+    function renderBusCards() {
+      const container = document.getElementById('busListContainer');
+      container.innerHTML = busDataState.map(bus => {
+        const meta = ROUTE_META[bus.routeNo] || { desc: '간선버스', type: '간선' };
+        const isArrivingSoon = bus.sec1 > 0 && bus.sec1 <= 120;
+
+        let mainArrivalText = '';
+        if (!isDemoMode && bus.arrmsg1 && (bus.arrmsg1.includes('종료') || bus.arrmsg1.includes('대기') || bus.arrmsg1.includes('없음'))) {
+          mainArrivalText = bus.arrmsg1;
+        } else if (bus.sec1 > 0) {
+          mainArrivalText = formatSeconds(bus.sec1);
+        } else {
+          mainArrivalText = bus.arrmsg1 || '도착정보 없음';
+        }
+
+        const subArrivalText = bus.sec2 > 0
+          ? `다음 버스 ${Math.floor(bus.sec2 / 60)}분 후`
+          : (bus.arrmsg2 && bus.arrmsg2 !== '-' ? `다음 버스 ${bus.arrmsg2}` : '다음 버스 정보없음');
+
+        return `
+          <div class="glass-card rounded-2xl p-4 flex items-center justify-between transition hover:border-slate-600/80">
+            <div class="flex items-center gap-3.5">
+              <div class="bus-badge-blue w-16 h-14 rounded-2xl flex flex-col items-center justify-center text-white shrink-0">
+                <span class="text-[10px] font-medium opacity-85 leading-none mb-0.5">${meta.type}</span>
+                <span class="text-xl font-extrabold tracking-tight leading-none">${bus.routeNo}</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-medium text-slate-300">${meta.desc}</span>
+                </div>
+                <div class="flex items-center gap-1.5 mt-1.5">
+                  ${getCongestionBadge(bus.congestion1)}
+                  <span class="text-[11px] text-slate-400 truncate max-w-[135px]">
+                    ${bus.stationNm1 ? `현위치: ${bus.stationNm1}` : '위치 확인중'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-right shrink-0">
+              <div class="text-lg font-bold tracking-tight ${isArrivingSoon ? 'text-rose-400 animate-pulse' : 'text-white'}">
+                ${mainArrivalText}
+              </div>
+              <div class="text-[11px] text-slate-400 mt-1">
+                ${subArrivalText}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openSettings() {
+      document.getElementById('apiKeyInput').value = apiKey;
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function saveApiKey() {
+      const val = document.getElementById('apiKeyInput').value.trim();
+      apiKey = val || DEFAULT_API_KEY;
+      localStorage.setItem('seoul_bus_api_key', apiKey);
+      closeSettings();
+      refreshCountdown = 30;
+      fetchBusData();
+    }
+
+    function resetApiKey() {
+      apiKey = DEFAULT_API_KEY;
+      localStorage.setItem('seoul_bus_api_key', apiKey);
+      document.getElementById('apiKeyInput').value = apiKey;
+      closeSettings();
+      refreshCountdown = 30;
+      fetchBusData();
+    }
+  </script>
+</body>
+</html>
