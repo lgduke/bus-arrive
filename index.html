@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>미아리고개 실시간 버스 v0.4</title>
+  <title>미아리고개 실시간 버스 v0.5</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -32,7 +32,7 @@
         <div class="flex items-center gap-1.5">
           <h1 class="text-lg font-bold tracking-tight">미아리고개 버스</h1>
           <span class="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-800/70 text-blue-100 border border-blue-400/30">
-            v0.4
+            v0.5
           </span>
           <span id="statusBadge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500 text-blue-100">
             연결 확인중
@@ -46,7 +46,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </button>
-        <button onclick="toggleSettings()" class="p-2 rounded-full hover:bg-blue-500 active:bg-blue-700 transition" title="API 키 설정">
+        <button onclick="toggleSettings()" class="p-2 rounded-full hover:bg-blue-500 active:bg-blue-700 transition" title="연결 설정">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -69,6 +69,17 @@
   </header>
 
   <main class="max-w-md mx-auto px-4 pt-4 space-y-3">
+    <!-- Worker 주소 미설정 안내 배너 -->
+    <div id="setupBanner" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 space-y-2">
+      <div class="font-bold text-blue-800 text-sm">📌 전용 중계 주소(Worker URL) 설정 필요</div>
+      <p class="leading-relaxed">
+        서울시 API는 보안상 직접 연결이 차단됩니다. 우측 상단 <strong>⚙️ 설정 버튼</strong>을 눌러 본인의 Cloudflare Worker 주소를 입력해 주세요.
+      </p>
+      <button onclick="toggleSettings()" class="mt-1 px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs">
+        지금 주소 입력하기
+      </button>
+    </div>
+
     <!-- 에러 / 상태 메시지 배너 -->
     <div id="alertBox" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
       <div class="font-bold flex items-center gap-1.5 text-amber-800">
@@ -84,26 +95,33 @@
     <div class="text-center text-[11px] text-slate-400 pt-2 space-y-1">
       <p>대상 노선: 100번 · 151번 · 152번 · 172번 (간선)</p>
       <p>정류장: 미아리고개.미아리예술극장 (중앙차로)</p>
-      <p id="proxyInfo" class="font-mono text-slate-400/80 pt-0.5">App Version 0.4</p>
+      <p id="proxyInfo" class="font-mono text-slate-400/80 pt-0.5">App Version 0.5</p>
     </div>
   </main>
 
-  <!-- API 키 설정 모달 -->
+  <!-- 연결 설정 모달 -->
   <div id="settingsModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl space-y-4">
       <div class="flex justify-between items-center">
-        <h2 class="font-bold text-base text-slate-800">공공데이터포털 인증키 설정 <span class="text-xs font-mono text-slate-400">(v0.4)</span></h2>
+        <h2 class="font-bold text-base text-slate-800">연결 설정 <span class="text-xs font-mono text-slate-400">(v0.5)</span></h2>
         <button onclick="toggleSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
       </div>
-      <p class="text-xs text-slate-500 leading-relaxed">
-        <strong>서울특별시_정류소정보조회 서비스</strong>의 일반 인증키(Encoding 또는 Decoding)를 입력하세요.
-      </p>
-      <input id="apiKeyInput" type="text" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="인증키 입력" />
-      <div class="flex gap-2">
+
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">1. Cloudflare Worker 주소</label>
+        <input id="workerUrlInput" type="url" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="https://seoul-bus.아이디.workers.dev" />
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">2. 공공데이터포털 인증키</label>
+        <input id="apiKeyInput" type="text" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="인증키 입력" />
+      </div>
+
+      <div class="flex gap-2 pt-1">
         <button onclick="resetDefaultKey()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-          기본값 복원
+          키 기본값 복원
         </button>
-        <button onclick="saveApiKey()" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-xs font-bold text-white hover:bg-blue-700">
+        <button onclick="saveSettings()" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-xs font-bold text-white hover:bg-blue-700">
           저장 및 조회
         </button>
       </div>
@@ -111,7 +129,7 @@
   </div>
 
   <script>
-    const APP_VERSION = "0.4";
+    const APP_VERSION = "0.5";
     const DEFAULT_API_KEY = "5ea1a59b98e8844285891a9cf4e338fd413c39df8ad09e6d3670f7807c85824b";
     const TARGET_ROUTES = ["100", "151", "152", "172"];
     let currentArsId = "08005"; // 08005: 성신여대방면(하행), 08006: 길음방면(상행)
@@ -119,6 +137,10 @@
 
     function getApiKey() {
       return localStorage.getItem("seoul_bus_api_key") || DEFAULT_API_KEY;
+    }
+
+    function getWorkerUrl() {
+      return (localStorage.getItem("seoul_bus_worker_url") || "").trim().replace(/\/$/, "");
     }
 
     function updateClock() {
@@ -180,61 +202,12 @@
             arrmsg2: item.querySelector("arrmsg2")?.textContent || "정보 없음",
             traTime1: parseInt(item.querySelector("traTime1")?.textContent || "0", 10),
             traTime2: parseInt(item.querySelector("traTime2")?.textContent || "0", 10),
-            stationNm1: item.querySelector("stationNm1")?.textContent || "",
-            stationNm2: item.querySelector("stationNm2")?.textContent || "",
             congestion1: item.querySelector("congestion1")?.textContent || "0",
             adirection: item.querySelector("adirection")?.textContent || ""
           };
         }
       });
       return map;
-    }
-
-    async function fetchWithMultiProxy(encodedKey, arsId) {
-      const httpUrl = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?serviceKey=${encodedKey}&arsId=${arsId}`;
-      const httpsUrl = `https://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?serviceKey=${encodedKey}&arsId=${arsId}`;
-
-      const candidates = [
-        { name: "Direct-HTTPS", url: httpsUrl, type: "text" },
-        { name: "AllOrigins-JSON", url: `https://api.allorigins.win/get?url=${encodeURIComponent(httpUrl)}`, type: "json" },
-        { name: "CodeTabs", url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(httpUrl)}`, type: "text" },
-        { name: "ThingProxy", url: `https://thingproxy.freeboard.io/fetch/${httpUrl}`, type: "text" },
-        { name: "CorsProxy", url: `https://corsproxy.io/?${encodeURIComponent(httpUrl)}`, type: "text" }
-      ];
-
-      const errors = [];
-      for (const candidate of candidates) {
-        try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 6000);
-          const res = await fetch(candidate.url, { cache: "no-store", signal: controller.signal });
-          clearTimeout(timer);
-
-          if (!res.ok) {
-            errors.push(`${candidate.name}: HTTP ${res.status}`);
-            continue;
-          }
-
-          let text = "";
-          if (candidate.type === "json") {
-            const json = await res.json();
-            text = json.contents || "";
-          } else {
-            text = await res.text();
-          }
-
-          if (text && (text.includes("<ServiceResult>") || text.includes("OpenAPI_ServiceResponse"))) {
-            document.getElementById("proxyInfo").textContent = `App Version ${APP_VERSION} · 경로: ${candidate.name}`;
-            return text;
-          } else {
-            errors.push(`${candidate.name}: 비정상 응답`);
-          }
-        } catch (err) {
-          errors.push(`${candidate.name}: ${err.name === 'AbortError' ? '시간초과' : err.message}`);
-        }
-      }
-
-      throw new Error(`모든 경로 연결 실패 (${errors.join(" / ")})`);
     }
 
     function getCongestionBadge(code) {
@@ -333,18 +306,34 @@
       const badge = document.getElementById("statusBadge");
       const alertBox = document.getElementById("alertBox");
       const alertMsg = document.getElementById("alertMessage");
+      const setupBanner = document.getElementById("setupBanner");
 
+      const workerUrl = getWorkerUrl();
+      if (!workerUrl) {
+        setupBanner.classList.remove("hidden");
+        badge.textContent = "설정 대기";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-300 text-amber-950";
+        renderCards({});
+        return;
+      }
+
+      setupBanner.classList.add("hidden");
       icon.classList.add("spin-anim");
+
       const rawKey = getApiKey().trim();
       const encodedKey = rawKey.includes("%") ? rawKey : encodeURIComponent(rawKey);
+      const requestUrl = `${workerUrl}?arsId=${currentArsId}&serviceKey=${encodedKey}`;
 
       try {
-        const xmlText = await fetchWithMultiProxy(encodedKey, currentArsId);
+        const res = await fetch(requestUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Worker 응답 오류 (HTTP ${res.status})`);
+        const xmlText = await res.text();
         const dataMap = parseXmlResponse(xmlText);
 
         badge.textContent = "실시간 연동중";
         badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950";
         alertBox.classList.add("hidden");
+        document.getElementById("proxyInfo").textContent = `App Version ${APP_VERSION} · 전용 Worker 연동`;
 
         renderCards(dataMap);
         startLiveCountdown();
@@ -352,12 +341,7 @@
         badge.textContent = "연동 오류";
         badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500 text-white";
         alertBox.classList.remove("hidden");
-
-        let detail = err.message;
-        if (detail.includes("SERVICE KEY") || detail.includes("30")) {
-          detail += " → 공공데이터포털에서 키를 방금 발급받으셨다면 서울시 서버 동기화까지 약 30분~1시간 정도 소요됩니다.";
-        }
-        alertMsg.textContent = detail;
+        alertMsg.textContent = err.message;
         renderCards({});
       } finally {
         icon.classList.remove("spin-anim");
@@ -367,15 +351,21 @@
 
     function toggleSettings() {
       const modal = document.getElementById("settingsModal");
-      const input = document.getElementById("apiKeyInput");
-      input.value = getApiKey();
+      document.getElementById("workerUrlInput").value = getWorkerUrl();
+      document.getElementById("apiKeyInput").value = getApiKey();
       modal.classList.toggle("hidden");
     }
 
-    function saveApiKey() {
-      const val = document.getElementById("apiKeyInput").value.trim();
-      if (val) {
-        localStorage.setItem("seoul_bus_api_key", val);
+    function saveSettings() {
+      const workerVal = document.getElementById("workerUrlInput").value.trim();
+      const keyVal = document.getElementById("apiKeyInput").value.trim();
+      if (workerVal) {
+        localStorage.setItem("seoul_bus_worker_url", workerVal);
+      } else {
+        localStorage.removeItem("seoul_bus_worker_url");
+      }
+      if (keyVal) {
+        localStorage.setItem("seoul_bus_api_key", keyVal);
       }
       toggleSettings();
       fetchBusData();
