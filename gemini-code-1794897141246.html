@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>내 주변 실시간 버스 v1.1</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .spin-anim { animation: spin 0.8s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="text-slate-800 pb-12">
+
+  <header class="bg-blue-600 text-white sticky top-0 z-20 shadow-md">
+    <div class="max-w-md mx-auto px-4 py-3.5 flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 id="headerTitle" class="text-lg font-bold tracking-tight">미아리고개 버스</h1>
+          <span class="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-800/70 text-blue-100 border border-blue-400/30">v1.1</span>
+          <span id="statusBadge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500 text-blue-100">준비중</span>
+        </div>
+        <p id="currentTime" class="text-xs text-blue-100 mt-0.5">--:--:-- 기준</p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="refreshBtn" onclick="fetchBusData()" class="p-2 rounded-full hover:bg-blue-500 active:bg-blue-700 transition" title="새로고침">
+          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+        <button onclick="toggleSettings()" class="p-2 rounded-full hover:bg-blue-500 active:bg-blue-700 transition" title="연결 설정">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="max-w-md mx-auto px-4 pb-3">
+      <div class="grid grid-cols-2 gap-1.5 bg-blue-700/60 p-1.5 rounded-xl">
+        <button id="tab-0" onclick="switchTab(0)" class="py-2 px-1 text-xs font-bold rounded-lg bg-white text-blue-700 shadow-sm transition leading-tight">미아리고개 · 도심 (08005)</button>
+        <button id="tab-1" onclick="switchTab(1)" class="py-2 px-1 text-xs font-bold rounded-lg text-blue-100 hover:text-white transition leading-tight">미아리고개 · 길음 (08006)</button>
+        <button id="tab-2" onclick="switchTab(2)" class="py-2 px-1 text-xs font-bold rounded-lg text-blue-100 hover:text-white transition leading-tight">아리랑고개 · 시내 (08265)</button>
+        <button id="tab-3" onclick="switchTab(3)" class="py-2 px-1 text-xs font-bold rounded-lg text-blue-100 hover:text-white transition leading-tight">성북20 (쌍용 · 브라운)</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-4 space-y-3">
+    <div id="setupBanner" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 space-y-2">
+      <div class="font-bold text-blue-800 text-sm">📌 전용 중계 주소(Worker URL) 설정 필요</div>
+      <p class="leading-relaxed">우측 상단 <strong>⚙️ 설정 버튼</strong>을 눌러 Cloudflare Worker 주소를 입력해 주세요.</p>
+      <button onclick="toggleSettings()" class="mt-1 px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs">지금 주소 입력하기</button>
+    </div>
+
+    <div id="alertBox" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
+      <div class="font-bold flex items-center justify-between text-amber-800">
+        <span>⚠️ 연결 상태 안내</span>
+        <button onclick="fetchBusData()" class="underline text-amber-700 font-semibold">다시 시도</button>
+      </div>
+      <p id="alertMessage" class="leading-relaxed break-all"></p>
+    </div>
+
+    <!-- 사용자 버스 번호 추가 바 (1~3번 탭에서만 표시) -->
+    <div id="customBusBar" class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 flex items-center gap-2">
+      <input id="customRouteInput" type="text" placeholder="추가할 버스 번호 (예: 144, N16)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') addCustomRoute()" />
+      <button onclick="addCustomRoute()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold whitespace-nowrap transition">
+        + 버스 추가
+      </button>
+    </div>
+
+    <div id="busList" class="space-y-3"></div>
+
+    <div class="text-center text-[11px] text-slate-400 pt-2 space-y-1">
+      <p id="footerRoutes">기본 노선: 100번 · 151번 · 152번 · 172번</p>
+      <p id="footerStation">정류장: 미아리고개.미아리예술극장 (08005)</p>
+      <p id="proxyInfo" class="font-mono text-slate-400/80 pt-0.5">App Version 1.1</p>
+    </div>
+  </main>
+
+  <div id="settingsModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="font-bold text-base text-slate-800">연결 설정 <span class="text-xs font-mono text-slate-400">(v1.1)</span></h2>
+        <button onclick="toggleSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">1. Cloudflare Worker 주소</label>
+        <input id="workerUrlInput" type="url" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="https://seoul-bus.아이디.workers.dev" />
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">2. 공공데이터포털 인증키</label>
+        <input id="apiKeyInput" type="text" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="인증키 입력" />
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button onclick="resetDefaultKey()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">키 기본값 복원</button>
+        <button onclick="saveSettings()" class="flex-1 py-2.5 rounded-xl bg-blue-600 text-xs font-bold text-white hover:bg-blue-700">저장 및 조회</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const APP_VERSION = "1.1";
+    const DEFAULT_API_KEY = "5ea1a59b98e8844285891a9cf4e338fd413c39df8ad09e6d3670f7807c85824b";
+    const CUSTOM_STORAGE_KEY = "seoul_bus_custom_routes_v1";
+
+    const TABS = [
+      {
+        title: "미아리고개 버스",
+        allowCustom: true,
+        footerRoutes: "기본 노선: 100번 · 151번 · 152번 · 172번",
+        footerStation: "정류장: 미아리고개.미아리예술극장 (성신여대·도심 방면) [08005]",
+        queries: [
+          { arsId: "08005", stationLabel: "미아리고개 · 도심 방면", routes: ["100", "151", "152", "172"] }
+        ]
+      },
+      {
+        title: "미아리고개 버스",
+        allowCustom: true,
+        footerRoutes: "기본 노선: 100번 · 151번 · 152번 · 172번",
+        footerStation: "정류장: 미아리고개.미아리예술극장 (길음·미아사거리 방면) [08006]",
+        queries: [
+          { arsId: "08006", stationLabel: "미아리고개 · 길음 방면", routes: ["100", "151", "152", "172"] }
+        ]
+      },
+      {
+        title: "아리랑고개 버스",
+        allowCustom: true,
+        footerRoutes: "기본 노선: 162번",
+        footerStation: "정류장: 아리랑고개 (시내 방면) [08265]",
+        queries: [
+          { arsId: "08265", stationLabel: "아리랑고개 · 시내 방면", routes: ["162"] }
+        ]
+      },
+      {
+        title: "성북20번 버스",
+        allowCustom: false,
+        footerRoutes: "대상 노선: 성북20번 (양방향 통합)",
+        footerStation: "정류장: 정릉쌍용예가 [08727] · 브라운스톤 [08928]",
+        queries: [
+          { arsId: "08727", stationLabel: "정릉쌍용예가 (성신여대 방면)", routes: ["성북20"] },
+          { arsId: "08928", stationLabel: "브라운스톤 (고려대역 방면)", routes: ["성북20"] }
+        ]
+      }
+    ];
+
+    let currentTabIndex = 0;
+    let countdownTimer = null;
+    let activeController = null;
+    const memoryCache = {}; // key: `${arsId}_${route}`
+
+    function getApiKey() { return localStorage.getItem("seoul_bus_api_key") || DEFAULT_API_KEY; }
+    function getWorkerUrl() { return (localStorage.getItem("seoul_bus_worker_url") || "").trim().replace(/\/$/, ""); }
+
+    // 정류장별 사용자 추가 노선 불러오기/저장
+    function getAllCustomRoutes() {
+      try {
+        return JSON.parse(localStorage.getItem(CUSTOM_STORAGE_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function getCustomRoutesForArs(arsId) {
+      const all = getAllCustomRoutes();
+      return Array.isArray(all[arsId]) ? all[arsId] : [];
+    }
+
+    function addCustomRoute() {
+      const tab = TABS[currentTabIndex];
+      if (!tab.allowCustom) return;
+
+      const input = document.getElementById("customRouteInput");
+      const raw = input.value.trim().toUpperCase().replace(/번$/, "");
+      if (!raw) return;
+
+      const primaryQuery = tab.queries[0];
+      const arsId = primaryQuery.arsId;
+      const all = getAllCustomRoutes();
+      const existingCustom = Array.isArray(all[arsId]) ? all[arsId] : [];
+
+      if (primaryQuery.routes.includes(raw)) {
+        alert(`${raw}번 버스는 이미 기본 목록에 있습니다.`);
+        input.value = "";
+        return;
+      }
+
+      // 중복 제거 후 가장 맨 앞(최상단)에 삽입
+      const updated = [raw, ...existingCustom.filter(r => r !== raw)];
+      all[arsId] = updated;
+      localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(all));
+
+      input.value = "";
+      renderTabCards(true);
+      fetchBusData();
+    }
+
+    function removeCustomRoute(arsId, route) {
+      const all = getAllCustomRoutes();
+      const existingCustom = Array.isArray(all[arsId]) ? all[arsId] : [];
+      all[arsId] = existingCustom.filter(r => r !== route);
+      localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(all));
+      renderTabCards(false);
+    }
+
+    function updateClock() {
+      const str = new Date().toTimeString().split(" ")[0];
+      document.getElementById("currentTime").textContent = `${str} 기준 (15초 자동갱신)`;
+    }
+
+    function switchTab(index) {
+      currentTabIndex = index;
+      const tab = TABS[index];
+      document.getElementById("headerTitle").textContent = tab.title;
+      document.getElementById("footerRoutes").textContent = tab.footerRoutes;
+      document.getElementById("footerStation").textContent = tab.footerStation;
+
+      // 성북20번 탭에서는 사용자 추가 입력창 숨김
+      const customBar = document.getElementById("customBusBar");
+      if (tab.allowCustom) {
+        customBar.classList.remove("hidden");
+      } else {
+        customBar.classList.add("hidden");
+      }
+
+      TABS.forEach((_, idx) => {
+        document.getElementById(`tab-${idx}`).className = idx === index
+          ? "py-2 px-1 text-xs font-bold rounded-lg bg-white text-blue-700 shadow-sm transition leading-tight"
+          : "py-2 px-1 text-xs font-bold rounded-lg text-blue-100 hover:text-white transition leading-tight";
+      });
+
+      renderTabCards(false);
+      fetchBusData();
+    }
+
+    function formatSeconds(sec) {
+      if (sec <= 0) return "곧 도착";
+      if (sec < 60) return `${sec}초 후`;
+      const min = Math.floor(sec / 60);
+      const rem = sec % 60;
+      return rem > 0 ? `${min}분 ${rem}초` : `${min}분`;
+    }
+
+    function parseXmlResponse(xmlText, targetRoutes) {
+      const xml = new DOMParser().parseFromString(xmlText, "text/xml");
+      const headerCd = xml.querySelector("headerCd")?.textContent;
+      const headerMsg = xml.querySelector("headerMsg")?.textContent;
+      const returnReasonCode = xml.querySelector("returnReasonCode")?.textContent;
+      const returnAuthMsg = xml.querySelector("returnAuthMsg")?.textContent;
+
+      if (returnReasonCode && returnReasonCode !== "00") throw new Error(`[코드 ${returnReasonCode}] ${returnAuthMsg || "인증키 오류"}`);
+      if (headerCd && headerCd !== "0") throw new Error(`[서울시 코드 ${headerCd}] ${headerMsg || "API 오류"}`);
+
+      const items = Array.from(xml.querySelectorAll("itemList"));
+      if (items.length === 0 && !headerCd) throw new Error("올바른 XML 데이터를 받지 못했습니다.");
+
+      const map = {};
+      items.forEach(item => {
+        const rtNm = item.querySelector("rtNm")?.textContent?.trim();
+        if (targetRoutes.includes(rtNm)) {
+          map[rtNm] = {
+            route: rtNm,
+            arrmsg1: item.querySelector("arrmsg1")?.textContent || "정보 없음",
+            arrmsg2: item.querySelector("arrmsg2")?.textContent || "정보 없음",
+            traTime1: parseInt(item.querySelector("traTime1")?.textContent || "0", 10),
+            traTime2: parseInt(item.querySelector("traTime2")?.textContent || "0", 10),
+            congestion1: item.querySelector("congestion1")?.textContent || "0",
+            adirection: item.querySelector("adirection")?.textContent || ""
+          };
+        }
+      });
+      return map;
+    }
+
+    function getCongestionBadge(code) {
+      if (code === "3") return `<span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">여유</span>`;
+      if (code === "4") return `<span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">보통</span>`;
+      if (code === "5") return `<span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-medium">혼잡</span>`;
+      return "";
+    }
+
+    function getRouteBadgeHtml(route) {
+      const isNight = route.startsWith("N");
+      const isMaeul = /[가-힣]/.test(route);
+      let colorClass = "bg-blue-600";
+      if (isMaeul) colorClass = "bg-emerald-600";
+      else if (isNight) colorClass = "bg-indigo-700";
+      return `<span class="px-2.5 py-1 rounded-lg ${colorClass} text-white font-extrabold text-base tracking-tight">${route}</span>`;
+    }
+
+    function renderTabCards(isLoading = false) {
+      const container = document.getElementById("busList");
+      const currentTab = TABS[currentTabIndex];
+      container.innerHTML = "";
+
+      currentTab.queries.forEach(q => {
+        const customRoutes = currentTab.allowCustom ? getCustomRoutesForArs(q.arsId) : [];
+        // 사용자가 추가한 노선을 맨 위에 배치하고 그 아래에 기본 노선 배치
+        const combinedRoutes = [
+          ...customRoutes.map(r => ({ route: r, isCustom: true })),
+          ...q.routes.map(r => ({ route: r, isCustom: false }))
+        ];
+
+        combinedRoutes.forEach(({ route, isCustom }) => {
+          const cacheKey = `${q.arsId}_${route}`;
+          const info = memoryCache[cacheKey];
+          const card = document.createElement("div");
+          card.className = isCustom
+            ? "bg-white rounded-2xl p-4 shadow-sm border-2 border-blue-200"
+            : "bg-white rounded-2xl p-4 shadow-sm border border-slate-100";
+
+          const deleteBtnHtml = isCustom
+            ? `<button onclick="removeCustomRoute('${q.arsId}', '${route}')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-semibold transition">삭제</button>`
+            : "";
+
+          const customTagHtml = isCustom
+            ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold">추가됨</span>`
+            : "";
+
+          if (!info) {
+            card.innerHTML = `
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  ${getRouteBadgeHtml(route)}
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-bold text-slate-700">${q.stationLabel}</span>
+                      ${customTagHtml}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${isLoading ? "정보 불러오는 중..." : "운행 정보 없음 (정류장 미정차 또는 운행종료)"}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  ${deleteBtnHtml}
+                </div>
+              </div>`;
+          } else {
+            const isArrivingSoon = info.traTime1 > 0 && info.traTime1 <= 120;
+            const time1Display = info.traTime1 > 0
+              ? `<span class="font-extrabold text-lg ${isArrivingSoon ? 'text-rose-600' : 'text-blue-600'}" data-sec="${info.traTime1}">${formatSeconds(info.traTime1)}</span>`
+              : `<span class="font-bold text-sm text-slate-600">${info.arrmsg1}</span>`;
+            const time2Display = info.traTime2 > 0
+              ? `<span class="font-semibold text-slate-700" data-sec="${info.traTime2}">${formatSeconds(info.traTime2)}</span>`
+              : `<span class="text-slate-500">${info.arrmsg2}</span>`;
+
+            card.innerHTML = `
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                  ${getRouteBadgeHtml(route)}
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-bold text-slate-800">${q.stationLabel}</span>
+                      ${customTagHtml}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${info.adirection ? info.adirection + " 방면 · " : ""}정류장 ID: ${q.arsId}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  ${getCongestionBadge(info.congestion1)}
+                  ${deleteBtnHtml}
+                </div>
+              </div>
+              <div class="pt-3 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-slate-500">이번 버스</span>
+                  <div class="text-right">
+                    ${time1Display}
+                    <div class="text-[11px] text-slate-400">${info.arrmsg1}</div>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between pt-1.5 border-t border-dashed border-slate-100">
+                  <span class="text-xs text-slate-400">다음 버스</span>
+                  <div class="text-right text-xs">
+                    ${time2Display}
+                    <span class="text-[11px] text-slate-400 ml-1">(${info.arrmsg2})</span>
+                  </div>
+                </div>
+              </div>`;
+          }
+          container.appendChild(card);
+        });
+      });
+    }
+
+    function startLiveCountdown() {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        document.querySelectorAll("[data-sec]").forEach(el => {
+          let sec = parseInt(el.getAttribute("data-sec"), 10);
+          if (sec > 0) {
+            sec -= 1;
+            el.setAttribute("data-sec", sec);
+            el.textContent = formatSeconds(sec);
+            if (sec <= 120) { el.classList.remove("text-blue-600"); el.classList.add("text-rose-600"); }
+          }
+        });
+      }, 1000);
+    }
+
+    async function fetchBusData() {
+      const icon = document.getElementById("refreshIcon");
+      const badge = document.getElementById("statusBadge");
+      const alertBox = document.getElementById("alertBox");
+      const alertMsg = document.getElementById("alertMessage");
+      const setupBanner = document.getElementById("setupBanner");
+      const currentTab = TABS[currentTabIndex];
+
+      const workerUrl = getWorkerUrl();
+      if (!workerUrl) {
+        setupBanner.classList.remove("hidden");
+        badge.textContent = "설정 대기";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-300 text-amber-950";
+        renderTabCards(false);
+        return;
+      }
+
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      const timeoutId = setTimeout(() => activeController.abort(), 7000);
+
+      setupBanner.classList.add("hidden");
+      icon.classList.add("spin-anim");
+      badge.textContent = "조회중...";
+      badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-400 text-white";
+
+      const rawKey = getApiKey().trim();
+      const encodedKey = rawKey.includes("%") ? rawKey : encodeURIComponent(rawKey);
+
+      try {
+        await Promise.all(currentTab.queries.map(async (q) => {
+          const customRoutes = currentTab.allowCustom ? getCustomRoutesForArs(q.arsId) : [];
+          const allTargetRoutes = [...new Set([...customRoutes, ...q.routes])];
+
+          const requestUrl = `${workerUrl}?arsId=${q.arsId}&serviceKey=${encodedKey}`;
+          const res = await fetch(requestUrl, { cache: "no-store", signal: activeController.signal });
+          if (!res.ok) throw new Error(`[${q.arsId}] Worker 응답 오류 (HTTP ${res.status})`);
+          const xmlText = await res.text();
+          const dataMap = parseXmlResponse(xmlText, allTargetRoutes);
+
+          allTargetRoutes.forEach(r => {
+            if (dataMap[r]) {
+              memoryCache[`${q.arsId}_${r}`] = dataMap[r];
+            } else {
+              delete memoryCache[`${q.arsId}_${r}`];
+            }
+          });
+        }));
+
+        clearTimeout(timeoutId);
+        badge.textContent = "실시간 연동중";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950";
+        alertBox.classList.add("hidden");
+        document.getElementById("proxyInfo").textContent = `App Version ${APP_VERSION} · 전용 Worker 연동`;
+
+        renderTabCards(false);
+        startLiveCountdown();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        badge.textContent = "연동 지연";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500 text-white";
+        alertBox.classList.remove("hidden");
+        alertMsg.textContent = err.name === "AbortError" ? "응답이 7초 이상 지연되어 중단되었습니다. 잠시 후 자동 재시도합니다." : err.message;
+        renderTabCards(false);
+      } finally {
+        icon.classList.remove("spin-anim");
+        updateClock();
+      }
+    }
+
+    function toggleSettings() {
+      const modal = document.getElementById("settingsModal");
+      document.getElementById("workerUrlInput").value = getWorkerUrl();
+      document.getElementById("apiKeyInput").value = getApiKey();
+      modal.classList.toggle("hidden");
+    }
+
+    function saveSettings() {
+      const workerVal = document.getElementById("workerUrlInput").value.trim();
+      const keyVal = document.getElementById("apiKeyInput").value.trim();
+      if (workerVal) localStorage.setItem("seoul_bus_worker_url", workerVal);
+      else localStorage.removeItem("seoul_bus_worker_url");
+      if (keyVal) localStorage.setItem("seoul_bus_api_key", keyVal);
+      toggleSettings();
+      fetchBusData();
+    }
+
+    function resetDefaultKey() {
+      localStorage.removeItem("seoul_bus_api_key");
+      document.getElementById("apiKeyInput").value = DEFAULT_API_KEY;
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+    switchTab(0);
+    setInterval(fetchBusData, 15000);
+  </script>
+</body>
+</html>
+<!-- END OF FILE -->
