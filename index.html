@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>내 주변 실시간 버스 v1.2</title>
+  <title>내 주변 실시간 버스 v1.3</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -26,7 +26,7 @@
       <div>
         <div class="flex items-center gap-1.5">
           <h1 id="headerTitle" class="text-lg font-bold tracking-tight">미아리고개 버스</h1>
-          <span class="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-800/70 text-blue-100 border border-blue-400/30">v1.2</span>
+          <span class="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-800/70 text-blue-100 border border-blue-400/30">v1.3</span>
           <span id="statusBadge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500 text-blue-100">준비중</span>
         </div>
         <p id="currentTime" class="text-xs text-blue-100 mt-0.5">--:--:-- 기준</p>
@@ -81,17 +81,25 @@
 
     <div id="busList" class="space-y-3"></div>
 
-    <div class="text-center text-[11px] text-slate-400 pt-2 space-y-1">
+    <!-- API 수신 전체 노선 확인용 디버그 패널 -->
+    <div class="pt-1 text-center">
+      <button onclick="toggleDebugRoutes()" class="text-[11px] text-slate-400 underline hover:text-slate-600">
+        이 정류장의 전체 API 수신 노선 보기
+      </button>
+      <div id="debugRoutesBox" class="hidden mt-2 bg-slate-200/70 rounded-xl p-3 text-left text-[11px] text-slate-600 font-mono break-all"></div>
+    </div>
+
+    <div class="text-center text-[11px] text-slate-400 pt-1 space-y-1">
       <p id="footerRoutes">기본 노선: 100번 · 151번 · 152번 · 172번</p>
       <p id="footerStation">정류장: 미아리고개.미아리예술극장 (08005)</p>
-      <p id="proxyInfo" class="font-mono text-slate-400/80 pt-0.5">App Version 1.2</p>
+      <p id="proxyInfo" class="font-mono text-slate-400/80 pt-0.5">App Version 1.3</p>
     </div>
   </main>
 
   <div id="settingsModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl space-y-4">
       <div class="flex justify-between items-center">
-        <h2 class="font-bold text-base text-slate-800">연결 설정 <span class="text-xs font-mono text-slate-400">(v1.2)</span></h2>
+        <h2 class="font-bold text-base text-slate-800">연결 설정 <span class="text-xs font-mono text-slate-400">(v1.3)</span></h2>
         <button onclick="toggleSettings()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
       </div>
       <div class="space-y-1.5">
@@ -110,7 +118,7 @@
   </div>
 
   <script>
-    const APP_VERSION = "1.2";
+    const APP_VERSION = "1.3";
     const DEFAULT_API_KEY = "5ea1a59b98e8844285891a9cf4e338fd413c39df8ad09e6d3670f7807c85824b";
     const CUSTOM_STORAGE_KEY = "seoul_bus_custom_routes_v1";
 
@@ -157,8 +165,9 @@
     let currentTabIndex = 0;
     let countdownTimer = null;
     let activeController = null;
-    const memoryCache = {}; // key: `${arsId}_${route}`
+    const memoryCache = {}; // key: `${arsId}_${routeKey}`
     const reserveRoutesCache = {}; // key: `${arsId}` -> ["M4102(예비)", ...]
+    const rawRoutesLog = {}; // key: `${arsId}` -> ["M4102성남", "8100용인", ...]
 
     function getApiKey() { return localStorage.getItem("seoul_bus_api_key") || DEFAULT_API_KEY; }
     function getWorkerUrl() { return (localStorage.getItem("seoul_bus_worker_url") || "").trim().replace(/\/$/, ""); }
@@ -217,6 +226,23 @@
       document.getElementById("currentTime").textContent = `${str} 기준 (15초 자동갱신)`;
     }
 
+    function toggleDebugRoutes() {
+      const box = document.getElementById("debugRoutesBox");
+      box.classList.toggle("hidden");
+      updateDebugBox();
+    }
+
+    function updateDebugBox() {
+      const box = document.getElementById("debugRoutesBox");
+      if (box.classList.contains("hidden")) return;
+      const tab = TABS[currentTabIndex];
+      const lines = tab.queries.map(q => {
+        const list = rawRoutesLog[q.arsId];
+        return `[${q.arsId}] 수신 노선(${list ? list.length : 0}개): ${list && list.length > 0 ? list.join(", ") : "없음"}`;
+      });
+      box.textContent = lines.join("\n");
+    }
+
     function switchTab(index) {
       currentTabIndex = index;
       const tab = TABS[index];
@@ -238,6 +264,7 @@
       });
 
       renderTabCards(false);
+      updateDebugBox();
       fetchBusData();
     }
 
@@ -249,17 +276,34 @@
       return rem > 0 ? `${min}분 ${rem}초` : `${min}분`;
     }
 
-    // 예비버스 매칭 헬퍼 (예: baseRoutes가 ["M4102", "8100"]일 때 "M4102(예비)", "8100예비", "M4102-1" 등 감지)
-    function isMatchedRoute(rtNm, targetRoutes, includeReserve) {
-      if (targetRoutes.includes(rtNm)) return { matched: true, isReserve: false };
-      if (!includeReserve) return { matched: false, isReserve: false };
+    // API에서 내려온 노선명(예: "M4102", "M4102성남", "M4102(예비)", "8100용인")을 정규 노선과 예비버스로 정확히 매칭
+    function matchRouteName(rtNm, targetRoutes, includeReserve) {
+      const normalized = rtNm.replace(/\s+/g, "").toUpperCase();
+      const isReserveKeyword = /예비|전세|출근|퇴근|예약|맞춤/.test(normalized);
 
       for (const base of targetRoutes) {
-        if (rtNm !== base && (rtNm.startsWith(base) || rtNm.includes(base))) {
-          return { matched: true, isReserve: true };
+        const baseNorm = base.replace(/\s+/g, "").toUpperCase();
+        // 1) 완전 일치 (예: "M4102" === "M4102")
+        if (normalized === baseNorm) {
+          return { key: base, displayName: rtNm, isReserve: false };
+        }
+        // 2) 뒤에 지역명만 붙은 정규 노선 (예: "M4102성남", "8100용인", "M4102(성남)")
+        if (!isReserveKeyword && normalized.startsWith(baseNorm)) {
+          const rest = normalized.slice(baseNorm.length);
+          // 뒤에 숫자가 바로 이어지지 않는 경우 (예: 100번 찾는데 1005번이 매칭되는 것 방지)
+          if (!/^\d/.test(rest)) {
+            return { key: base, displayName: rtNm, isReserve: false };
+          }
+        }
+        // 3) 예비/전세/출근/예약 버스 매칭 (예: "M4102(예비)", "8100예약")
+        if (includeReserve && isReserveKeyword && normalized.includes(baseNorm)) {
+          const restAfter = normalized.split(baseNorm)[1] || "";
+          if (!/^\d/.test(restAfter)) {
+            return { key: rtNm, displayName: rtNm, isReserve: true };
+          }
         }
       }
-      return { matched: false, isReserve: false };
+      return null;
     }
 
     function parseXmlResponse(xmlText, targetRoutes, includeReserve = false) {
@@ -277,29 +321,34 @@
 
       const map = {};
       const detectedReserves = [];
+      const allRawNames = [];
 
       items.forEach(item => {
         const rtNm = item.querySelector("rtNm")?.textContent?.trim();
         if (!rtNm) return;
+        allRawNames.push(rtNm);
 
-        const { matched, isReserve } = isMatchedRoute(rtNm, targetRoutes, includeReserve);
-        if (matched) {
-          if (isReserve && !detectedReserves.includes(rtNm)) {
-            detectedReserves.push(rtNm);
+        const match = matchRouteName(rtNm, targetRoutes, includeReserve);
+        if (match) {
+          if (match.isReserve && !detectedReserves.includes(match.key)) {
+            detectedReserves.push(match.key);
           }
-          map[rtNm] = {
-            route: rtNm,
-            isReserve,
-            arrmsg1: item.querySelector("arrmsg1")?.textContent || "정보 없음",
-            arrmsg2: item.querySelector("arrmsg2")?.textContent || "정보 없음",
-            traTime1: parseInt(item.querySelector("traTime1")?.textContent || "0", 10),
-            traTime2: parseInt(item.querySelector("traTime2")?.textContent || "0", 10),
-            congestion1: item.querySelector("congestion1")?.textContent || "0",
-            adirection: item.querySelector("adirection")?.textContent || ""
-          };
+          // 동일 정규 노선이 여러 번 내려올 경우 도착 정보가 유효한 항목 우선
+          if (!map[match.key] || map[match.key].arrmsg1 === "운행종료") {
+            map[match.key] = {
+              route: match.displayName,
+              isReserve: match.isReserve,
+              arrmsg1: item.querySelector("arrmsg1")?.textContent || "정보 없음",
+              arrmsg2: item.querySelector("arrmsg2")?.textContent || "정보 없음",
+              traTime1: parseInt(item.querySelector("traTime1")?.textContent || "0", 10),
+              traTime2: parseInt(item.querySelector("traTime2")?.textContent || "0", 10),
+              congestion1: item.querySelector("congestion1")?.textContent || "0",
+              adirection: item.querySelector("adirection")?.textContent || ""
+            };
+          }
         }
       });
-      return { map, detectedReserves };
+      return { map, detectedReserves, allRawNames };
     }
 
     function getCongestionBadge(code) {
@@ -312,8 +361,7 @@
     function getRouteBadgeHtml(route) {
       const cleanName = route.replace(/\(.*?\)/g, "").trim();
       const isNight = cleanName.startsWith("N");
-      const isMaeul = /[가-힣]/.test(cleanName);
-      // M버스(M4102 등) 및 경기 직행좌석/광역버스(8100 등 4자리 이상 숫자)는 빨간색 배지 적용
+      const isMaeul = /[가-힣]/.test(cleanName) && !cleanName.startsWith("M") && !/^\d{4}/.test(cleanName);
       const isRedBus = cleanName.startsWith("M") || /^\d{4}/.test(cleanName);
 
       let colorClass = "bg-blue-600";
@@ -333,16 +381,16 @@
         const customRoutes = currentTab.allowCustom ? getCustomRoutesForArs(q.arsId) : [];
         const reserveRoutes = q.includeReserve ? (reserveRoutesCache[q.arsId] || []) : [];
 
-        // 사용자 추가 노선 -> 기본 노선 -> 감지된 예비버스 순서로 배치
         const combinedRoutes = [
-          ...customRoutes.map(r => ({ route: r, isCustom: true, isReserve: false })),
-          ...q.routes.map(r => ({ route: r, isCustom: false, isReserve: false })),
-          ...reserveRoutes.map(r => ({ route: r, isCustom: false, isReserve: true }))
+          ...customRoutes.map(r => ({ key: r, isCustom: true, isReserve: false })),
+          ...q.routes.map(r => ({ key: r, isCustom: false, isReserve: false })),
+          ...reserveRoutes.map(r => ({ key: r, isCustom: false, isReserve: true }))
         ];
 
-        combinedRoutes.forEach(({ route, isCustom, isReserve }) => {
-          const cacheKey = `${q.arsId}_${route}`;
+        combinedRoutes.forEach(({ key, isCustom, isReserve }) => {
+          const cacheKey = `${q.arsId}_${key}`;
           const info = memoryCache[cacheKey];
+          const displayRoute = info ? info.route : key;
           const card = document.createElement("div");
 
           if (isCustom) {
@@ -354,7 +402,7 @@
           }
 
           const deleteBtnHtml = isCustom
-            ? `<button onclick="removeCustomRoute('${q.arsId}', '${route}')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-semibold transition">삭제</button>`
+            ? `<button onclick="removeCustomRoute('${q.arsId}', '${key}')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-semibold transition">삭제</button>`
             : "";
 
           let statusTagHtml = "";
@@ -368,7 +416,7 @@
             card.innerHTML = `
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2.5">
-                  ${getRouteBadgeHtml(route)}
+                  ${getRouteBadgeHtml(displayRoute)}
                   <div>
                     <div class="flex items-center gap-1.5">
                       <span class="text-xs font-bold text-slate-700">${q.stationLabel}</span>
@@ -393,7 +441,7 @@
             card.innerHTML = `
               <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div class="flex items-center gap-2.5">
-                  ${getRouteBadgeHtml(route)}
+                  ${getRouteBadgeHtml(displayRoute)}
                   <div>
                     <div class="flex items-center gap-1.5">
                       <span class="text-xs font-bold text-slate-800">${q.stationLabel}</span>
@@ -482,9 +530,9 @@
           const res = await fetch(requestUrl, { cache: "no-store", signal: activeController.signal });
           if (!res.ok) throw new Error(`[${q.arsId}] Worker 응답 오류 (HTTP ${res.status})`);
           const xmlText = await res.text();
-          const { map: dataMap, detectedReserves } = parseXmlResponse(xmlText, allTargetRoutes, q.includeReserve);
+          const { map: dataMap, detectedReserves, allRawNames } = parseXmlResponse(xmlText, allTargetRoutes, q.includeReserve);
 
-          // 감지된 예비버스 목록 갱신
+          rawRoutesLog[q.arsId] = allRawNames;
           reserveRoutesCache[q.arsId] = detectedReserves;
 
           const allToStore = [...new Set([...allTargetRoutes, ...detectedReserves])];
@@ -504,6 +552,7 @@
         document.getElementById("proxyInfo").textContent = `App Version ${APP_VERSION} · 전용 Worker 연동`;
 
         renderTabCards(false);
+        updateDebugBox();
         startLiveCountdown();
       } catch (err) {
         clearTimeout(timeoutId);
