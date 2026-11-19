@@ -337,4 +337,214 @@
         const combinedRoutes = [
           ...customRoutes.map(r => ({ route: r, isCustom: true, isReserve: false })),
           ...q.routes.map(r => ({ route: r, isCustom: false, isReserve: false })),
-          ...reserveRoutes.
+          ...reserveRoutes.map(r => ({ route: r, isCustom: false, isReserve: true }))
+        ];
+
+        combinedRoutes.forEach(({ route, isCustom, isReserve }) => {
+          const cacheKey = `${q.arsId}_${route}`;
+          const info = memoryCache[cacheKey];
+          const card = document.createElement("div");
+
+          if (isCustom) {
+            card.className = "bg-white rounded-2xl p-4 shadow-sm border-2 border-blue-200";
+          } else if (isReserve) {
+            card.className = "bg-white rounded-2xl p-4 shadow-sm border-2 border-amber-200";
+          } else {
+            card.className = "bg-white rounded-2xl p-4 shadow-sm border border-slate-100";
+          }
+
+          const deleteBtnHtml = isCustom
+            ? `<button onclick="removeCustomRoute('${q.arsId}', '${route}')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 font-semibold transition">삭제</button>`
+            : "";
+
+          let statusTagHtml = "";
+          if (isCustom) {
+            statusTagHtml = `<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold">추가됨</span>`;
+          } else if (isReserve) {
+            statusTagHtml = `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">예비버스</span>`;
+          }
+
+          if (!info) {
+            card.innerHTML = `
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  ${getRouteBadgeHtml(route)}
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-bold text-slate-700">${q.stationLabel}</span>
+                      ${statusTagHtml}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${isLoading ? "정보 불러오는 중..." : "운행 정보 없음 (정류장 미정차 또는 운행종료)"}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  ${deleteBtnHtml}
+                </div>
+              </div>`;
+          } else {
+            const isArrivingSoon = info.traTime1 > 0 && info.traTime1 <= 120;
+            const time1Display = info.traTime1 > 0
+              ? `<span class="font-extrabold text-lg ${isArrivingSoon ? 'text-rose-600' : 'text-blue-600'}" data-sec="${info.traTime1}">${formatSeconds(info.traTime1)}</span>`
+              : `<span class="font-bold text-sm text-slate-600">${info.arrmsg1}</span>`;
+            const time2Display = info.traTime2 > 0
+              ? `<span class="font-semibold text-slate-700" data-sec="${info.traTime2}">${formatSeconds(info.traTime2)}</span>`
+              : `<span class="text-slate-500">${info.arrmsg2}</span>`;
+
+            card.innerHTML = `
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                  ${getRouteBadgeHtml(route)}
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-bold text-slate-800">${q.stationLabel}</span>
+                      ${statusTagHtml}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${info.adirection ? info.adirection + " 방면 · " : ""}정류장 ID: ${q.arsId}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  ${getCongestionBadge(info.congestion1)}
+                  ${deleteBtnHtml}
+                </div>
+              </div>
+              <div class="pt-3 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-slate-500">이번 버스</span>
+                  <div class="text-right">
+                    ${time1Display}
+                    <div class="text-[11px] text-slate-400">${info.arrmsg1}</div>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between pt-1.5 border-t border-dashed border-slate-100">
+                  <span class="text-xs text-slate-400">다음 버스</span>
+                  <div class="text-right text-xs">
+                    ${time2Display}
+                    <span class="text-[11px] text-slate-400 ml-1">(${info.arrmsg2})</span>
+                  </div>
+                </div>
+              </div>`;
+          }
+          container.appendChild(card);
+        });
+      });
+    }
+
+    function startLiveCountdown() {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        document.querySelectorAll("[data-sec]").forEach(el => {
+          let sec = parseInt(el.getAttribute("data-sec"), 10);
+          if (sec > 0) {
+            sec -= 1;
+            el.setAttribute("data-sec", sec);
+            el.textContent = formatSeconds(sec);
+            if (sec <= 120) { el.classList.remove("text-blue-600"); el.classList.add("text-rose-600"); }
+          }
+        });
+      }, 1000);
+    }
+
+    async function fetchBusData() {
+      const icon = document.getElementById("refreshIcon");
+      const badge = document.getElementById("statusBadge");
+      const alertBox = document.getElementById("alertBox");
+      const alertMsg = document.getElementById("alertMessage");
+      const setupBanner = document.getElementById("setupBanner");
+      const currentTab = TABS[currentTabIndex];
+
+      const workerUrl = getWorkerUrl();
+      if (!workerUrl) {
+        setupBanner.classList.remove("hidden");
+        badge.textContent = "설정 대기";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-300 text-amber-950";
+        renderTabCards(false);
+        return;
+      }
+
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      const timeoutId = setTimeout(() => activeController.abort(), 7000);
+
+      setupBanner.classList.add("hidden");
+      icon.classList.add("spin-anim");
+      badge.textContent = "조회중...";
+      badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-400 text-white";
+
+      const rawKey = getApiKey().trim();
+      const encodedKey = rawKey.includes("%") ? rawKey : encodeURIComponent(rawKey);
+
+      try {
+        await Promise.all(currentTab.queries.map(async (q) => {
+          const customRoutes = currentTab.allowCustom ? getCustomRoutesForArs(q.arsId) : [];
+          const allTargetRoutes = [...new Set([...customRoutes, ...q.routes])];
+
+          const requestUrl = `${workerUrl}?arsId=${q.arsId}&serviceKey=${encodedKey}`;
+          const res = await fetch(requestUrl, { cache: "no-store", signal: activeController.signal });
+          if (!res.ok) throw new Error(`[${q.arsId}] Worker 응답 오류 (HTTP ${res.status})`);
+          const xmlText = await res.text();
+          const { map: dataMap, detectedReserves } = parseXmlResponse(xmlText, allTargetRoutes, q.includeReserve);
+
+          // 감지된 예비버스 목록 갱신
+          reserveRoutesCache[q.arsId] = detectedReserves;
+
+          const allToStore = [...new Set([...allTargetRoutes, ...detectedReserves])];
+          allToStore.forEach(r => {
+            if (dataMap[r]) {
+              memoryCache[`${q.arsId}_${r}`] = dataMap[r];
+            } else {
+              delete memoryCache[`${q.arsId}_${r}`];
+            }
+          });
+        }));
+
+        clearTimeout(timeoutId);
+        badge.textContent = "실시간 연동중";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950";
+        alertBox.classList.add("hidden");
+        document.getElementById("proxyInfo").textContent = `App Version ${APP_VERSION} · 전용 Worker 연동`;
+
+        renderTabCards(false);
+        startLiveCountdown();
+      } catch (err) {
+        clearTimeout(timeoutId);
+        badge.textContent = "연동 지연";
+        badge.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500 text-white";
+        alertBox.classList.remove("hidden");
+        alertMsg.textContent = err.name === "AbortError" ? "응답이 7초 이상 지연되어 중단되었습니다. 잠시 후 자동 재시도합니다." : err.message;
+        renderTabCards(false);
+      } finally {
+        icon.classList.remove("spin-anim");
+        updateClock();
+      }
+    }
+
+    function toggleSettings() {
+      const modal = document.getElementById("settingsModal");
+      document.getElementById("workerUrlInput").value = getWorkerUrl();
+      document.getElementById("apiKeyInput").value = getApiKey();
+      modal.classList.toggle("hidden");
+    }
+
+    function saveSettings() {
+      const workerVal = document.getElementById("workerUrlInput").value.trim();
+      const keyVal = document.getElementById("apiKeyInput").value.trim();
+      if (workerVal) localStorage.setItem("seoul_bus_worker_url", workerVal);
+      else localStorage.removeItem("seoul_bus_worker_url");
+      if (keyVal) localStorage.setItem("seoul_bus_api_key", keyVal);
+      toggleSettings();
+      fetchBusData();
+    }
+
+    function resetDefaultKey() {
+      localStorage.removeItem("seoul_bus_api_key");
+      document.getElementById("apiKeyInput").value = DEFAULT_API_KEY;
+    }
+
+    updateClock();
+    setInterval(updateClock, 1000);
+    switchTab(0);
+    setInterval(fetchBusData, 15000);
+  </script>
+</body>
+</html>
+<!-- END OF FILE -->
